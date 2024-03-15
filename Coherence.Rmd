@@ -1,0 +1,60 @@
+---
+title: "Coherencia"
+output: html_document
+date: "2023-11-09"
+---
+
+
+```{r, include=FALSE}
+setwd("D:/Users/Usuario/OneDrive - UAM/Trabajo/Coherencia/")
+library("ape")
+library(Biostrings)
+library("TreeTools")
+library(tidyverse)
+library(castor)
+library(nodiv)
+library(phytools)
+tree=read.tree("gtdb_r86.ssu.bacteria.fasttree_name_pruned.tree") #The named and pruned 16S tree from Parras $ Aguirre de Cárcer 2021 is loaded here
+ref=readDNAStringSet("bac_ssu_r86.fna") #loading the 16S sequences that gave rise to the original tree
+
+#Now we filter the sequence data to contain only identifiers present in the tree
+nombres<-TipLabels(tree)
+borrar<-names(ref)
+borrar<-gsub("~.*","",borrar)
+names(ref)<-borrar
+filtered_ref=ref[names(ref) %in% nombres]  #this now constitutes the reference dataset
+
+#Now we import the sequences from our PCGs
+secuencias<-readDNAStringSet("99_otus.fasta")    #all reference sequences
+datos<-read.table("results.txt",sep="\t",header=T,nrows=13)   #our PCG data
+limits<-read.table("41598_2021_87909_MOESM2_ESM5.txt",sep="\t",skip=2)   #Parras & Aguirre coherence limits in 16S
+limits<-limits[,1] #these are the frontier nodes in the gtdb phylogeny
+
+#For each PCG we retrieve the names of the reference OTUs forming the PCG, then we sample the reference set for these sequences
+
+for (i in 1:13) {
+    writeXStringSet(secuencias[names(secuencias) %in% str_split_1(datos[(i),9], ";")], paste("Node_",datos[(i),1],sep=""))
+  }
+
+#No run outside of this script:
+  #makeblastdb -in filtered_ref.fasta -dbtype nucl -title filtered -out filtered
+  #for n in Node*; do  blastn -db filtered -query $n -out $n"_blast" -outfmt 6 -num_alignments 1 ; done
+
+
+#now we process the blast results, and find the most recent common ancestor of the sequences arising from each PCG
+
+for (i in list.files(path=".", pattern="*_blast")) {
+    assign((i), get_mrca_of_set(tree, read.table((i), sep="\t")[,2]))
+}
+
+
+#quickly check the mrca one by one
+
+for (i in limits){
+  b<-getDescendants(tree, (i))
+ # print(i)
+  print(9285 %in% b)
+}
+
+
+```
