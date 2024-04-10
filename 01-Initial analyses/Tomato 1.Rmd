@@ -1,0 +1,362 @@
+---
+title: "Plantas1"
+output: html_document
+date: "2023-10-16"
+instrucciones: The working directory, metadata (tab delimited text) and object files in the initial chunk, pass some archive files to the folder R1 and R2 for calibration plots. Remember to start the first part of the process on the cluster; removing primers (ex: remove_16S_primers.sh) and dada2 (ex: launch_multidada2.sh)
+---
+
+Processing post-dada results
+
+
+```{r, include=FALSE}
+knitr::opts_knit$set(root.dir = "D:/Users/Usuario/OneDrive - UAM/Trabajo/Plantas1/")
+library(here)
+library(microbiome)
+library(dada2)
+library(phyloseq)
+library(Biostrings)
+library(ggplot2)
+library(doParallel)
+library(readxl)
+library(DECIPHER)
+library(phangorn)
+library(microbiomeMarker)
+library(speedyseq)
+library(tidyverse)
+
+theme_set(theme_bw())
+`%notin%` <- Negate(`%in%`)
+
+pop_taxa=function(physeq, badTaxa){
+  allTaxa=taxa_names(physeq)
+  allTaxa<-allTaxa[!(allTaxa%in%badTaxa)]
+  return(prune_taxa(allTaxa, physeq))
+}
+
+merge_low_abundance <- function(Air_snow_16S_ps_NEW_clean, threshold=0.05){
+  transformed <- transform_sample_counts(Air_snow_16S_ps_NEW_clean, function(x) x/sum(x))
+  otu.table <- as.data.frame(otu_table(transformed))
+  otu.list <- row.names(otu.table[rowMeans(otu.table) < threshold,])
+  merged <- merge_taxa(transformed, otu.list, 1)
+  for (i in 1:dim(tax_table(merged))[1]){
+    if (is.na(tax_table(merged)[i,2])){
+      taxa_names(merged)[i] <- "Under 1%"
+      tax_table(merged)[i,1:6] <- "Under 1%"}
+  }
+  return(merged)
+}
+
+load(here("Data","dada2multithreads.RData"))
+my_data <- read.csv("~/repos/tomato-paper/clave.txt", sep = "\t")
+rownames(my_data)<-t(my_data[,1])
+
+
+
+```
+
+
+#Initial exploration and processing
+Quality analysis:
+```{r echo=FALSE, fig.show="hold", message=FALSE, warning=FALSE, out.width="50%"}
+plotQualityProfile(here("Data","./R1"[1]))
+plotQualityProfile(here("Data","./R2"[1]))
+```
+
+Error models (forward, then reverse):
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+plotErrors(errF, nominalQ=TRUE)
+plotErrors(errR, nominalQ=TRUE)
+```
+
+Size distribution:
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+plot(table(nchar(getSequences(seqtab))))
+```
+
+Chimera removal:
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+print(paste0("ASVs witout vhimeras: ", dim(seqtab_nochim)[2], "  Initial ASV: ", dim(seqtab)[2]))
+
+print(paste0("% of sequences removed: ", 1-sum(seqtab_nochim)/sum(seqtab)))
+```
+
+General processing results:
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+track2<-track
+row.names(track2)<-NULL
+head(track2)
+```
+
+Initial exploration:
+```{r, message=FALSE, warning=FALSE}
+
+#print("If all TRUE go ahead, otherwise fix sample names")
+#rownames(seqtab_nochim) == my_data$Muestra
+
+ps <- phyloseq(otu_table(seqtab_nochim, taxa_are_rows=FALSE), 
+               sample_data(my_data), 
+               tax_table(tax))
+ps<-subset_samples(ps, Ojo != "No") #remove samples that didn´t have ok PCRs
+
+print("Inicial:")
+ps
+inicial<-sum(otu_table(ps))
+
+ps <- subset_taxa(ps, Class!="Chloroplast"| is.na(Class)) #subset_taxa con != tb quita los NA, por eso los vuelvo a meter
+sin_cloroplastos<-sum(otu_table(ps))
+ps <- subset_taxa(ps, Family!="Mitochondria"| is.na(Family))
+sin_mitocondrias<-sum(otu_table(ps))
+ps <- subset_taxa(ps, Kingdom!="Eukaryota"| is.na(Kingdom))
+sin_eucariotas<-sum(otu_table(ps))
+valores<-c(inicial,sin_cloroplastos,sin_mitocondrias,sin_eucariotas)
+print(paste0("Total inicial= ",inicial))
+print(paste0("  quitando cloroplastos= ",sin_cloroplastos))
+print(paste0("  quitando mitocondrias= ",sin_mitocondrias))
+print(paste0("  quitando eucariotas= ",sin_eucariotas))
+print("Filtrado:")
+ps
+summarize_phyloseq(ps)
+```
+
+
+
+Set sampling effort (change first subsampling):
+```{r, message=FALSE, warning=FALSE, echo=TRUE}
+
+ps_si<-merge_samples(ps,"Juntar")  
+sort(sample_sums(ps_si))
+plot(sort(sample_sums(ps_si))) | abline(h=45000)
+
+ps_si<-rarefy_even_depth(ps_si, sample.size = 45000,trimOTUs = TRUE)
+#uncomment previous to continue, but every time you run it you may get slighlty different results
+```
+
+
+
+
+Barplots and ordination:
+```{r, message=FALSE, warning=FALSE, echo=TRUE}
+
+#diagramas de barras de top 10 a distintos niveles
+nivel<-"Class"
+ps_si_nivel<- tax_glom(ps_si, nivel)
+Top10nivel = names(sort(taxa_sums(ps_si_nivel), TRUE)[1:10])
+ps_si_nivel = prune_taxa(Top10nivel, ps_si_nivel)
+plot_bar(ps_si_nivel, fill=nivel)
+
+#nmds de bray curtis plot
+ord.nmds.bray <- ordinate(ps_si, method="NMDS", distance="bray")
+#colnames(sample_data(ps_si))<-c("Sample", "Soil", "Type", "Ojo", "Juntar")
+print("Change stress!")
+plot_ordination(ps_si, ord.nmds.bray, shape="Type",color="Soil", title="Bray NMDS (Stress=0.171)")
+
+```
+
+
+
+#Here I am going to map the ASVs to their most similar sequence in greengenes, then I will collapse those species that hit the same reference, then I will load the tree, remove the tips that are not among my hits and change the tip labels so that they are the own sequences (the taxa_names)
+
+```{r, message=FALSE, warning=FALSE, echo=TRUE}
+
+secuencias<-as.list(taxa_names(ps_si))
+library(seqinr)
+
+write.fasta(secuencias,names=secuencias, file.out=here("Data", "Secuencias4gg.fasta"),open="w") 
+  
+# Now do construct a blast database for greengenes 99_otus rep set, and use blast.sh otuside this script
+
+blasteo<-read.table(here("data", "Secuencias4gg_blast"), sep="\t")[,1:2]
+
+blasteo<-blasteo %>% distinct(V1, .keep_all=TRUE) 
+
+secs<-data.frame(V1=as.character(secuencias))
+nohit<-anti_join(secs,blasteo,by="V1")
+ps_si2<-pop_taxa(ps_si, nohit$V1)
+print("Secuencias analizadas:")
+print(length(secs$V1))
+print("Secuencias con hit a referencia:")
+print(length(blasteo$V1))
+print("Porcentaje positivo:")
+print(length(blasteo$V1)/length(secs$V1))
+print("Porcentaje de conteos mantenidos")
+print(sum(otu_table(ps_si2))/sum(otu_table(ps_si)))
+print("Total de conteos perdidos")
+print(sum(otu_table(ps_si)) - sum(otu_table(ps_si2)))
+
+tree=read.tree(here("data","99_otus.tree"))
+tree2<-drop.tip(tree,tree$tip.label[-match(blasteo$V2, tree$tip.label)])
+
+nombres<-as.integer(tree2$tip.label)
+nombres_blast<-blasteo %>% distinct(V2, .keep_all=TRUE)
+borrar<-nombres_blast[match(nombres,nombres_blast$V2),]
+tree2$tip.label<-borrar$V1
+
+
+ps_si3<-ps_si2
+for (i in unique(blasteo$V2[duplicated(blasteo$V2)])){
+  #print(i)
+  a<- blasteo |> filter(V2 %in% (i)) |> pull(V1)
+  #print(a)
+  ps_si3<-merge_taxa(ps_si3, a, 1)
+  #print(ps_si3)
+}
+
+
+```
+
+
+```{r, message=FALSE, warning=FALSE, echo=TRUE}
+
+phy_tree(ps_si3) <-tree2 
+
+library(picante)
+library(biomeUtils)
+colnames(sample_data(ps_si3))<-c("Sample", "Soil", "Type", "Ojo", "Juntar")
+p_faith<-calculatePD(ps_si3)
+df<-data.frame(x=sample_data(p_faith)$PD, Soil=sample_data(p_faith)$Soil, Type=sample_data(p_faith)$Type)
+df2<-data.frame(x=sample_data(p_faith)$SR, Soil=sample_data(p_faith)$Soil, Type=sample_data(p_faith)$Type)
+
+df %>%
+  ggplot (aes (x = Soil, y = x)) + 
+  geom_boxplot() +
+  geom_point (aes(color = Type)) + 
+  ggtitle( "Faith") +
+  theme (axis.title.y = element_blank()) -> p
+
+df2  %>%
+  ggplot (aes (x = Soil, y = x)) + 
+  geom_boxplot() +
+  geom_point (aes(color = Type)) + 
+  ggtitle( "Richness") +
+  theme (axis.title.y = element_blank())-> q
+
+p + q + patchwork::plot_layout(guides = "collect")
+
+
+```
+
+
+
+```{r, message=FALSE, warning=FALSE, echo=TRUE}
+save.image("cdpcoa_input.RData") 
+
+#run cdpcoa.R ouside this script
+
+load(here("Data","cdpcoa_results.RData"))
+
+plot_ordination(ps_si3, ps.dpcoa, color="Soil", shape="Type") +
+  ggplot2::scale_colour_discrete()
+
+```
+
+
+```{r}
+ps_si4<-ps_si3
+
+tax_glom(ps_si3, taxrank="Class") |> 
+ psmelt() |> 
+  group_by(Class) |> 
+  tally(wt = Abundance, sort =T) |> 
+  slice (1:10) |> 
+  pull(Class)-> keepers
+
+tax_table(ps_si4) |> 
+  as_tibble() |> 
+  mutate (Class = case_when(Class %in% keepers ~ Class,
+                            TRUE               ~ "Others")) |> 
+  as.data.frame() |> 
+  column_to_rownames(".otu") -> new.tax.table
+
+new_color <- c("#a6cee3","#1f78b4","#b2df8a","#33a02c","#fb9a99","#e31a1c","#fdbf6f","#ff7f00","#cab2d6","#6a3d9a")
+
+names(new_color) <- keepers
+
+new_color[11]<- "#808080" 
+names(new_color)[11]<- "Others"
+
+tax_table(ps_si4) <- as.matrix(new.tax.table)
+
+plot_ordination(ps_si4, ps.dpcoa, color="Class",  type="species") +
+  ggplot2::scale_colour_manual(values = new_color) -> Plot_by_10_classes
+
+
+
+
+```
+
+
+```{r, message=FALSE, warning=FALSE, echo=TRUE}
+
+library(ade4)
+library(adegraphics)
+a<-as.data.frame(otu_table(ps_si3))
+ps_si3_dudi_coa<-dudi.coa(a, scannf=FALSE)
+ps_si3_wca_soil<-wca(ps_si3_dudi_coa, as.factor(sample_data(ps_si3)$Soil), scannf=FALSE)
+
+ps_si3_wca_soil_BCA_rhizo<-bca(ps_si3_wca_soil, as.factor(sample_data(ps_si3)$Type), scannf=FALSE)
+
+print(append("randtest value for betweenType on withinSoil [dudi.pca] (pvalue): ",randtest(ps_si3_wca_soil_BCA_rhizo)$pvalue))
+```
+
+
+```{r, message=FALSE, warning=FALSE, echo=TRUE}
+tibble (position = ps_si3_wca_soil_BCA_rhizo$ls[,1], sample = rownames(ps_si3_wca_soil_BCA_rhizo$ls), Type = sample_data(ps_si4)$Type) -> rebuilt.df
+
+rebuilt.df |> 
+  mutate (Class = "") -> rebuilt.df
+
+
+tax_table(ps_si4) |> 
+  as_data_frame() |> 
+  select (Seq = 1, Class) -> taxonomy_seqs
+
+tibble(position = ps_si3_wca_soil_BCA_rhizo$co[,1], Seq = rownames(ps_si3_wca_soil_BCA_rhizo$co)) |> 
+  inner_join(taxonomy_seqs) |> select(-Seq) -> OTU_rebuilt
+
+
+OTU_rebuilt |> 
+  ggplot(aes(x = Class, y = position)) + geom_violin(aes(fill = Class)) -> q
+
+library (patchwork)
+
+p+q
+
+rebuilt.df |> 
+  bind_rows(OTU_rebuilt) -> all.for.plot 
+  
+
+ggplot(all.for.plot) +
+  geom_point(data = ~. |> filter(  Class == ""), aes(y = position, Class,shape = Type), size = 3, alpha = 0.3) +
+  geom_violin(data = ~. |> filter(  Class != ""),aes(y = position, Class,fill = Class)) +
+  ggplot2::scale_fill_manual(values = new_color) +
+  labs ( y = "Coordinate 1")+
+  theme (axis.title.x = element_blank(),
+         axis.text.x = element_blank())
+
+```
+
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+
+#Run picrust2 outside this script with default parameters
+
+EC_table<-read.table("pred_metagenome_unstrat_EC.tsv", sep="\t", header=TRUE)
+rownames(EC_table)=EC_table$`function`
+EC_table=EC_table[,-which(colnames(EC_table)=="function.")]
+colnames(EC_table)=rownames(sample_data(ps_si))
+EC<-phyloseq(otu_table(EC_table, taxa_are_rows=T),sample_data(ps_si))
+EC.nmds.bray <- ordinate(EC, method="NMDS", distance="bray")
+plot_ordination(EC, EC.nmds.bray, title="Bray NMDS (Stress=0.167)",color="Soil", shape="Type")
+
+
+KO_table<-read.table("pred_metagenome_unstrat_KO.tsv", sep="\t", header=TRUE)
+rownames(KO_table)=KO_table$`function`
+KO_table=KO_table[,-which(colnames(KO_table)=="function.")]
+colnames(KO_table)=rownames(sample_data(ps_si))
+KO<-phyloseq(otu_table(KO_table, taxa_are_rows=T),sample_data(ps_si))
+KO.nmds.bray <- ordinate(KO, method="NMDS", distance="bray")
+plot_ordination(KO, KO.nmds.bray, title="KO; Bray NMDS",color="Soil", shape="Type")
+
+```
