@@ -1,5 +1,5 @@
 ---
-title: "Plantas1"
+title: "Tomato"
 output: html_document
 date: "2023-10-16"
 instrucciones: The working directory, metadata (tab delimited text) and object files in the initial chunk, pass some archive files to the folder R1 and R2 for calibration plots. Remember to start the first part of the process on the cluster; removing primers (ex: remove_16S_primers.sh) and dada2 (ex: launch_multidada2.sh)
@@ -47,7 +47,7 @@ merge_low_abundance <- function(Air_snow_16S_ps_NEW_clean, threshold=0.05){
 }
 
 load(here("Data","dada2multithreads.RData"))
-my_data <- read.csv(here("data", "clave.txt"), sep = "\t")
+my_data <- read.csv(here("Data", "clave.txt"), sep = "\t")
 rownames(my_data)<-t(my_data[,1])
 
 
@@ -124,15 +124,24 @@ summarize_phyloseq(ps)
 Set sampling effort (change first subsampling):
 ```{r, message=FALSE, warning=FALSE, echo=TRUE}
 
-ps2<-merge_samples(ps,"Juntar")  
-#ps_si<-subset_samples(ps2, Ojo != "No") ############################################################################
+ps_si<-merge_samples(ps,"Juntar")
+
+sample_data(ps) |> as.data.frame() |> group_by(Juntar) |> select(-Muestra)  |> distinct() -> target.metadata
+sample_data(ps_si) |> 
+  as_tibble() |> 
+  distinct(Juntar, .sample) |> 
+  inner_join(target.metadata) |> 
+  as.data.frame() -> new.metadata
+sample_data( new.metadata) -> new.sample.data
+sample_names(new.sample.data) <- new.metadata$Juntar
+sample_data(ps_si) <- new.sample.data
+rm(new.metadata, new.sample.data, target.metadata)
+
 sort(sample_sums(ps_si))
 plot(sort(sample_sums(ps_si))) | abline(h=45000)
-#ps_si<-rarefy_even_depth(ps_si,sample.size = 45000,trimOTUs = TRUE)
-print("Descomenta el rarefy, está puesto para no cagarla porque el resultado del rarefy modifica un poco las secuencias que van a blast, por lo que si sin querer le das otra vez a rarefy sacas un nuevo objeto ps_si cuyas ASVs ya no son iguales a las que se blastearon previamente")
-print(n=100, sample_data(ps_si))
 
-#del suelo "D" solo queda una muestra de rhizosfera, quizás tendría que quitar "D" del análisis, de los otros suelos al menos hay 3 rizosferas.
+ps_si<-rarefy_even_depth(ps_si,sample.size = 45000,trimOTUs = TRUE)
+#uncomment previous to continue, but every time you run it you may get slighlty different results
 ```
 
 
@@ -152,7 +161,7 @@ plot_bar(ps_si_nivel, fill=nivel)
 ord.nmds.bray <- ordinate(ps_si, method="NMDS", distance="bray")
 #colnames(sample_data(ps_si))<-c("Sample", "Soil", "Type", "Ojo", "Juntar")
 print("Change stress!")
-plot_ordination(ps_si, ord.nmds.bray, shape="Type",color="Soil", title="Bray NMDS (Stress=0.171)")
+plot_ordination(ps_si, ord.nmds.bray, shape="Tipo",color="Soil", title="Bray NMDS (Stress=0.171)")
 
 ```
 
@@ -215,7 +224,7 @@ phy_tree(ps_si3) <-tree2
 
 library(picante)
 library(biomeUtils)
-colnames(sample_data(ps_si3))<-c("Sample", "Soil", "Type", "Ojo", "Juntar")
+colnames(sample_data(ps_si3))<-c("Sample", "Soil", "Type", "Juntar")
 p_faith<-calculatePD(ps_si3)
 df<-data.frame(x=sample_data(p_faith)$PD, Soil=sample_data(p_faith)$Soil, Type=sample_data(p_faith)$Type)
 df2<-data.frame(x=sample_data(p_faith)$SR, Soil=sample_data(p_faith)$Soil, Type=sample_data(p_faith)$Type)

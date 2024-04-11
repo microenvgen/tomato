@@ -1,5 +1,3 @@
-
-
 truncLen <- c(268, 218)
 maxmismatches <- 1 
 removeBimeraDenovo_method <- "consensus"
@@ -87,8 +85,3 @@ colnames(track) <- c('input', 'filtered', 'dada+merged', 'nochim')
                  
                     
 save.image("dada2multithreads.RData")
-
-
-
-
-
