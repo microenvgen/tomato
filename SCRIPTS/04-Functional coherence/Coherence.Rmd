@@ -1,0 +1,89 @@
+---
+title: "Coherencia"
+output: html_document
+date: "2023-11-09"
+---
+
+I want to check whether the 20 PCGs we found in tomato rhizosphere have coherence, that is - if they are within the limits marked in the 16S phylogeny in Parras-Moltó & Aguirre de Cárcer. For this I have to check if the PCG nodes are within the phylo-functional coherence nodes described on that paper.
+
+
+```{r, include=FALSE}
+setwd("/home/silvia/AAA/2023-12-06_Coherencia/")
+cutoff = "0005" #0005 = 0.005, 0.5%
+```
+
+```{r}
+library("ape")
+library(Biostrings)
+library("TreeTools")
+library(tidyverse)
+library(dplyr)
+library(castor)
+library(nodiv) # we need the nodes and nodenumbers functions https://github.com/mkborregaard/nodiv
+library(phytools)
+```
+
+```{r}
+tree=read.tree("gtdb_r86.ssu.bacteria.fasttree_name_pruned.tree") #The named and pruned 16S tree from Parras $ Aguirre de Cárcer 2021 is loaded here
+ref=readDNAStringSet("bac_ssu_r86.fna") #loading the 16S sequences that gave rise to the original tree
+# ^^^^ https://data.gtdb.ecogenomic.org/releases/release86/86.0/bac_ssu_r86.fna
+
+#Now we filter the sequence data to contain only identifiers present in the tree
+nombres<-TipLabels(tree)
+borrar<-names(ref)
+borrar<-gsub("~.*","",borrar)
+names(ref)<-borrar
+filtered_ref=ref[names(ref) %in% nombres]  #this now constitutes the reference dataset
+
+#Now we import the sequences from our PCGs
+secuencias <- readDNAStringSet("99_otus.fasta")    #all reference sequences
+inputfile=paste0("results_", cutoff,".txt")
+datos<-read.table(inputfile,sep="\t",header=T,nrow =length(readLines(inputfile))-2)   #our PCG data
+# ^^^^  cp ~/AAA/2022-09-13_tomate/Final_results_221010/tomate_cutoff/tomate_bc_0.005/Tree/results.txt ~/AAA/2023-12-06_Coherencia/results_0.005.txt
+
+# limits<-read.table("41598_2021_87909_MOESM2_ESM5.txt",sep="\t",skip=2)   #Parras & Aguirre coherence limits in 16S
+limits<-read.table("media-4.csv",sep="\t",skip=2)   #Parras & Aguirre coherence limits in 16S
+limits<-limits[,1] #these are the frontier nodes in the gtdb phylogeny
+
+#For each PCG we retrieve the names of the reference OTUs forming the PCG, then we sample the reference set for these sequences
+
+for (i in 1:nrow(datos)) {
+    writeXStringSet(secuencias[names(secuencias) %in% str_split_1(datos[(i),9], ";")], paste(cutoff, "/Node_",datos[(i),1],sep=""))
+  }
+```
+
+#This was run in a cluster
+```
+# module load blast/blast-2.7.1+
+#makeblastdb -in filtered_ref.fasta -dbtype nucl -title filtered -out filtered
+#for n in Node*; do  blastn -db filtered -query $n -out $n"_blast" -outfmt 6 -num_alignments 1 ; done
+```
+
+```{r}
+#now we process the blast results, and find the most recent common ancestor of the sequences arising from each PCG
+
+results <- data.frame(file_name = character(), mrca_value = numeric())
+for (i in list.files(path=cutoff, pattern="*_blast")) {
+    print(i)
+    results <- rbind(results, data.frame(file_name = i, 
+                                         mrca_value = get_mrca_of_set(tree, read.table(paste0(cutoff, "/", i), sep="\t")[,2])))
+      # assign((i), get_mrca_of_set(tree, read.table((i), sep="\t")[,2]))
+}
+
+limitN<-as.vector(nodes(tree, all=TRUE)[limits])
+
+is_coherent <- NULL
+
+for (mrca in results$mrca_value) {
+  b <- c()
+  for (i in limitN){ # vector con TODOS los descendientes de nodos límite
+    b <- c(b, getDescendants(tree, (i)))
+  }
+  print(mrca %in% b)
+  is_coherent <- c(is_coherent, mrca %in% b)
+}
+
+results$is_coherent <- is_coherent
+
+write.csv(results, file=paste0(cutoff, "_results"))
+```

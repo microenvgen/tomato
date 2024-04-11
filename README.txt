@@ -1,5 +1,26 @@
 This repository contains scripts used in the analyses of "Coupled phylogenetic and functional enrichment in the tomato rhizosphere microbiome" by Talavera-Marcos S, Gallego R, Chaboy R, Rastrojo A, and Aguirre de Cárcer D.
 
+## RESULTS
+
+This folder contains some of the raw partial results.
+
+- `PCG identification` contains results from `BacterialCore.py`, including the abundance table, taxonomy and PCG data obtained with a cutoff of 0.5% for the 99%-identity-clustered OTUs.
+
+- `tomate_subset.fa` includes the processed 16S sequences used as input for BacterialCore, from the selected 40 samples.
+
+- `Coverage of minimal metagenome` includes the results obtained with PICRUSt2, including annotations for PCG, non-PCG and random OTU combinations.
+	
+	`results_PCG_evaluation` includes the predicted minimal metagenome coverages:
+	
+	- `results_non-PCG_combis_12.csv`: combinations of 12 random OTUs from a pool of the 8 non-coherent PCGs.
+	- `results_PCG_combis.csv': combinations of 12 random OTUs from a pool of the 12 coherent PCGs. One OTU from each.
+	- `results_random_combis_12.csv`: combinations of 12 random OTUs from a pool of all the OTUs in the samples.
+
+	`results_picrust2_PCG_COHERENT_ONLY` includes numbers and lists of KOs from the minimal metagenome that are covered by each one of the 12 coherent PCGs.
+
+- `Coherence` includes the results from the per-PCG functional coherence test and the MRCA assigned in each case.
+
+## SCRIPTS
 
 ### Initial analyses
 
@@ -23,6 +44,10 @@ Then [QIIME](https://github.com/biocore/qiime/releases/tag/1.9.1) scripts are ca
 The final OTU table is filtered to remove chromosome, non-bacterial and mitochondrial sequences. At this point we removed low quality samples from the input folder and re-run the script with 40 samples in total.
 
 2. `BC_command.sh`. Includes the [BacterialCore.py](https://git.io/Je5V3) arguments. Internally, uses QIIME as well. Uses the FASTA from the previous script.
+
+### Functional coherence
+
+The `Coherence.Rmd` file includes the commands used for assessing functional coherence, based on the original scripts on the [FunCongr](https://github.com/mparmol/FunCongr) repository. 
 
 ### PICRUSt2 and KO analysis
 
