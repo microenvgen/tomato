@@ -43,7 +43,9 @@ Then [QIIME](https://github.com/biocore/qiime/releases/tag/1.9.1) scripts are ca
 
 The final OTU table is filtered to remove chromosome, non-bacterial and mitochondrial sequences. At this point we removed low quality samples from the input folder and re-run the script with 40 samples in total.
 
-2. `BC_command.sh`. Includes the [BacterialCore.py](https://git.io/Je5V3) arguments. Internally, uses QIIME as well. Uses the FASTA from the previous script.
+2. `make_fasta.R`. Creates the final FASTA file (`tomato_subset.fa`) from the filtered OTU abundance table (tomate_23sep_otu_table.csv) used by `BacterialCore.py`.
+
+3. `BC_command.sh`. Includes the [BacterialCore.py](https://git.io/Je5V3) arguments. Internally, uses QIIME as well. Uses the FASTA from the previous script.
 
 ### Functional coherence
 
