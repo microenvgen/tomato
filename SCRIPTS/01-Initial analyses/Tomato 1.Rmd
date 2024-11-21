@@ -9,7 +9,6 @@ Processing post-dada results
 
 
 ```{r, include=FALSE}
-knitr::opts_knit$set(root.dir = "D:/Users/Usuario/OneDrive - UAM/Trabajo/Plantas1/")
 library(here)
 library(microbiome)
 library(dada2)
@@ -18,10 +17,10 @@ library(Biostrings)
 library(ggplot2)
 library(doParallel)
 library(readxl)
-library(DECIPHER)
+# library(DECIPHER)
 library(phangorn)
-library(microbiomeMarker)
-library(speedyseq)
+# library(microbiomeMarker)
+# library(speedyseq)
 library(tidyverse)
 
 theme_set(theme_bw())
@@ -46,11 +45,10 @@ merge_low_abundance <- function(Air_snow_16S_ps_NEW_clean, threshold=0.05){
   return(merged)
 }
 
-load(here("Data","dada2multithreads.RData"))
-my_data <- read.csv("~/repos/tomato-paper/clave.txt", sep = "\t")
+load("./dada2multithreads_prueba3.RData")
+my_data <- read.csv("./clave.txt", sep = "\t")
 rownames(my_data)<-t(my_data[,1])
-
-
+colnames(my_data)[colnames(my_data) == "Tipo"] <-"Type"
 
 ```
 
@@ -76,7 +74,7 @@ plot(table(nchar(getSequences(seqtab))))
 Chimera removal:
 
 ```{r, message=FALSE, warning=FALSE, echo=FALSE}
-print(paste0("ASVs witout vhimeras: ", dim(seqtab_nochim)[2], "  Initial ASV: ", dim(seqtab)[2]))
+print(paste0("ASVs without chimeras: ", dim(seqtab_nochim)[2], "  Initial ASV: ", dim(seqtab)[2]))
 
 print(paste0("% of sequences removed: ", 1-sum(seqtab_nochim)/sum(seqtab)))
 ```
@@ -98,7 +96,7 @@ Initial exploration:
 ps <- phyloseq(otu_table(seqtab_nochim, taxa_are_rows=FALSE), 
                sample_data(my_data), 
                tax_table(tax))
-ps<-subset_samples(ps, Ojo != "No") #remove samples that didn´t have ok PCRs
+# ps<-subset_samples(ps, Ojo != "No") #remove samples that didn´t have ok PCRs
 
 print("Inicial:")
 ps
@@ -125,33 +123,62 @@ summarize_phyloseq(ps)
 Set sampling effort (change first subsampling):
 ```{r, message=FALSE, warning=FALSE, echo=TRUE}
 
-ps_si<-merge_samples(ps,"Juntar")  
+# "Juntar" removes redundancies (only pick one sample per triplicate for Soil samples)
+sample_data_df <- data.frame(sample_data(ps)) #> so we don't lose metadata when merging
+aggregated_metadata <- sample_data_df %>%        #> ...
+  group_by(Juntar) %>%
+  summarise(Muestra = unique(Muestra)[1],
+            Soil = Soil,
+            Type = Type
+  ) %>%
+  unique %>% 
+  as.data.frame
+rownames(aggregated_metadata) <- aggregated_metadata$Juntar        #> ...
+ps_si<-merge_samples(ps, "Juntar") 
+sample_data(ps_si) <- sample_data(aggregated_metadata)             #> ...
+sample_names(physeq = ps_si) <- sample_data(ps_si)$Muestra         #> ...
+
 sort(sample_sums(ps_si))
 plot(sort(sample_sums(ps_si))) | abline(h=45000)
 
-ps_si<-rarefy_even_depth(ps_si, sample.size = 45000,trimOTUs = TRUE)
+ps_si<-rarefy_even_depth(ps_si, sample.size = 45000, trimOTUs = TRUE)
 #uncomment previous to continue, but every time you run it you may get slighlty different results
+# otu_table(ps_si) %>% saveRDS("anosim-bd/nochim_filtered_50_ASVs_soils.rds")
 ```
 
 
 
 
-Barplots and ordination:
+Barplots and ordination (Figure 1):
 ```{r, message=FALSE, warning=FALSE, echo=TRUE}
 
 #diagramas de barras de top 10 a distintos niveles
-nivel<-"Class"
-ps_si_nivel<- tax_glom(ps_si, nivel)
+nivel<-"Family"
+ps_si_nivel <- tax_glom(ps_si, nivel)
+# ps_si_nivel_class <- tax_glom(ps_si, "Class")
 Top10nivel = names(sort(taxa_sums(ps_si_nivel), TRUE)[1:10])
 ps_si_nivel = prune_taxa(Top10nivel, ps_si_nivel)
 plot_bar(ps_si_nivel, fill=nivel)
 
-#nmds de bray curtis plot
+#complot de bray curtis plot
 ord.nmds.bray <- ordinate(ps_si, method="NMDS", distance="bray")
 #colnames(sample_data(ps_si))<-c("Sample", "Soil", "Type", "Ojo", "Juntar")
 print("Change stress!")
-plot_ordination(ps_si, ord.nmds.bray, shape="Type",color="Soil", title="Bray NMDS (Stress=0.171)")
-
+# tiff("../../FIGURES/Figure_1.tiff", width = 1280, height = 784)
+plot_ordination(ps_si, ord.nmds.bray,
+                shape="Type",
+                color="Soil",
+                title="A") +
+                # title="Bray NMDS (Stress=0.171)") +
+  geom_point(size = 6) +  # Double the point size (default is 3)
+  theme(
+    plot.title = element_text(size = 30),  # Double the title size
+    axis.title = element_text(size = 24),  # Double axis title size
+    axis.text = element_text(size = 18),   # Double axis labels size
+    legend.text = element_text(size = 18), # Double the legend text size
+    legend.title = element_text(size = 20) # Double the legend title size
+  )
+dev.off()
 ```
 
 
@@ -244,11 +271,22 @@ save.image("cdpcoa_input.RData")
 
 #run cdpcoa.R ouside this script
 
-load(here("Data","cdpcoa_results.RData"))
+load("cdpcoa_results.RData")
 
+
+tiff("../../FIGURES/Figure_2.tiff", width = 1280, height = 784)
 plot_ordination(ps_si3, ps.dpcoa, color="Soil", shape="Type") +
-  ggplot2::scale_colour_discrete()
-
+  ggtitle("B") +
+  ggplot2::scale_colour_discrete() +
+  geom_point(size = 6) +  # Double the point size (default is 3)
+  theme(
+    plot.title = element_text(size = 30),  # Double the title size
+    axis.title = element_text(size = 24),  # Double axis title size
+    axis.text = element_text(size = 18),   # Double axis labels size
+    legend.text = element_text(size = 18), # Double the legend text size
+    legend.title = element_text(size = 20) # Double the legend title size
+  )
+dev.off()
 ```
 
 
@@ -263,11 +301,13 @@ tax_glom(ps_si3, taxrank="Class") |>
   pull(Class)-> keepers
 
 tax_table(ps_si4) |> 
+  data.frame() |>
   as_tibble() |> 
   mutate (Class = case_when(Class %in% keepers ~ Class,
                             TRUE               ~ "Others")) |> 
-  as.data.frame() |> 
-  column_to_rownames(".otu") -> new.tax.table
+  as.data.frame() -> new.tax.table
+# |> 
+  # column_to_rownames(".otu")
 
 new_color <- c("#a6cee3","#1f78b4","#b2df8a","#33a02c","#fb9a99","#e31a1c","#fdbf6f","#ff7f00","#cab2d6","#6a3d9a")
 
@@ -276,13 +316,25 @@ names(new_color) <- keepers
 new_color[11]<- "#808080" 
 names(new_color)[11]<- "Others"
 
-tax_table(ps_si4) <- as.matrix(new.tax.table)
+# tax_table(ps_si4) <- as.matrix(new.tax.table)
+tax_table(ps_si4) <- new.tax.table
 
 plot_ordination(ps_si4, ps.dpcoa, color="Class",  type="species") +
   ggplot2::scale_colour_manual(values = new_color) -> Plot_by_10_classes
 
 
-
+tiff("../../FIGURES/Figure_3.tiff", width = 1280, height = 784)
+plot(Plot_by_10_classes) +
+  ggtitle("C") +
+  geom_point(size = 6) +  # Double the point size (default is 3)
+  theme(
+    plot.title = element_text(size = 30),  # Double the title size
+    axis.title = element_text(size = 24),  # Double axis title size
+    axis.text = element_text(size = 18),   # Double axis labels size
+    legend.text = element_text(size = 18), # Double the legend text size
+    legend.title = element_text(size = 20) # Double the legend title size
+  )
+dev.off()
 
 ```
 
@@ -345,11 +397,28 @@ ggplot(all.for.plot) +
 EC_table<-read.table("pred_metagenome_unstrat_EC.tsv", sep="\t", header=TRUE)
 rownames(EC_table)=EC_table$`function`
 EC_table=EC_table[,-which(colnames(EC_table)=="function.")]
-colnames(EC_table)=rownames(sample_data(ps_si))
-EC<-phyloseq(otu_table(EC_table, taxa_are_rows=T),sample_data(ps_si))
+SampleN <- colnames(EC_table) %>% stringr::str_remove("sample_") %>% as.numeric # old colnames in EC_table correspond to the sample numbers in our phyloseq objects
+colnames(EC_table)=sample_data(ps_si)$Muestra[match(SampleN, sample_data(ps_si)$Juntar)]
+EC<-phyloseq(otu_table(EC_table, taxa_are_rows=T), sample_data(ps_si))
 EC.nmds.bray <- ordinate(EC, method="NMDS", distance="bray")
-plot_ordination(EC, EC.nmds.bray, title="Bray NMDS (Stress=0.167)",color="Soil", shape="Type")
 
+
+tiff("../../FIGURES/Figure_4.tiff", width = 1280, height = 784)
+plot_ordination(EC,
+                EC.nmds.bray,
+                title="D",
+                # title="Bray NMDS (Stress=0.167)",
+                color="Soil",
+                shape="Type") +
+  geom_point(size = 6) +  # Double the point size (default is 3)
+  theme(
+    plot.title = element_text(size = 30),  # Double the title size
+    axis.title = element_text(size = 24),  # Double axis title size
+    axis.text = element_text(size = 18),   # Double axis labels size
+    legend.text = element_text(size = 18), # Double the legend text size
+    legend.title = element_text(size = 20) # Double the legend title size
+  )
+dev.off()
 
 KO_table<-read.table("pred_metagenome_unstrat_KO.tsv", sep="\t", header=TRUE)
 rownames(KO_table)=KO_table$`function`
