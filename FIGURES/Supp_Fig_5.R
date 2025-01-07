@@ -16,7 +16,7 @@ KO.nmds.bray <- ordinate(KO, method="NMDS", distance="bray")
 
 setEPS()
 postscript("Suppl_Figure_5.eps", width = 16, height = 9) # Adjusted size for EPS (16x9 inches)
-# tiff("Figure_3.tiff", width = 1280, height = 784)
+# tiff("Suppl_Figure_5.tiff", width = 1280, height = 784)
 plot_ordination(KO,
                 KO.nmds.bray,
                 color="Soil",

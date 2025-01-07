@@ -46,12 +46,13 @@ dev.off()
 
 tiff("Figure_2.tiff", width = 1280, height = 784)
 plot(Plot_by_10_classes) +
-  geom_point(size = 6) +  # Double the point size (default is 3)
+  geom_point(size = 3) +  # Double the point size (default is 3)
   theme(
     # plot.title = element_text(size = 30),  # Double the title size
-    # axis.title = element_text(size = 24),  # Double axis title size
+    axis.title = element_text(size = 24),  # Double axis title size
     axis.text = element_text(size = 18),   # Double axis labels size
     legend.text = element_text(size = 18), # Double the legend text size
+    legend.key.height = unit(1.2, "cm"), # Separation between legend lines
     legend.title = element_text(size = 20) # Double the legend title size
   )
 dev.off()

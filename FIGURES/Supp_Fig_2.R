@@ -63,5 +63,5 @@ ggsave(plot = p, width = 8, height = 6,
        filename = "Suppl_Figure_2.eps",
        device = "eps")
 ggsave(plot = p, width = 8, height = 6,
-       filename = "Suppl_Figure_2.jpeg",
-       device = "jpeg")
+       filename = "Suppl_Figure_2.tiff",
+       device = "tiff")

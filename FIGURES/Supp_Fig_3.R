@@ -35,6 +35,6 @@ ggsave(plot = final, width = 8, height = 6,
 ggsave(plot = final, width = 8, height = 6,
        filename = "Suppl_Figure_3.jpeg",
        device = "jpeg")
-# ggsave(plot = final, width = 8, height = 6,
-#        filename = "Suppl_Figure_3.tiff",
-#        device = "tiff")
+ggsave(plot = final, width = 8, height = 6,
+       filename = "Suppl_Figure_3.tiff",
+       device = "tiff")
