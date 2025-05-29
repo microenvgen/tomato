@@ -1,5 +1,7 @@
 This repository contains scripts used in the analyses of "Coupled phylogenetic and functional enrichment in the tomato rhizosphere microbiome" by Talavera-Marcos S, Gallego R, Chaboy R, Rastrojo A, and Aguirre de Cárcer D.
 
+The original 16S rRNA gene dataset is available at the European Nucleotide Archive (PRJEB74653).
+
 ## RESULTS
 
 This folder contains some of the raw partial results.
